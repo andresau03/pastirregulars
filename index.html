@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Juego de Verbos — Memoria (Base ↔ Past Simple)</title>
+  <style>
+    :root{
+      --bg1:#fef3c7; --bg2:#eef2ff;
+      --panel:#ffffff; --muted:#6b7280;
+      --blue:#2b8fff; --orange:#ff8a3d; --accent:#8b5cf6;
+      --card-shadow: 0 8px 28px rgba(16,24,40,0.08);
+    }
+    *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    html,body{height:100%;margin:0}
+    body{
+      display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(120deg,var(--bg1),var(--bg2));
+      animation: bgshift 12s infinite alternate ease-in-out;
+      padding:20px;
+      color:#06335b;
+    }
+    @keyframes bgshift{
+      0%{background:linear-gradient(120deg,#fff7ed,#eef2ff)}
+      50%{background:linear-gradient(120deg,#f0f9ff,#fff7f5)}
+      100%{background:linear-gradient(120deg,#fefce8,#eef2ff)}
+    }
+    .container{width:100%;max-width:1200px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+    h1{margin:0;font-size:20px}
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .panel{background:var(--panel);padding:12px;border-radius:14px;box-shadow:var(--card-shadow)}
+    select, button{padding:8px 12px;border-radius:10px;border:1px solid rgba(2,6,23,0.06);background:var(--panel);cursor:pointer}
+    button.primary{background:linear-gradient(90deg,var(--blue),#36a6ff);color:white;border:none;font-weight:700}
+    .stats{display:flex;gap:12px;align-items:center;color:var(--muted);font-size:14px}
+    .grid{display:grid;gap:12px;margin-top:12px}
+    @media (min-width:1100px){ .grid{grid-template-columns:repeat(8,1fr)} }
+    @media (min-width:760px) and (max-width:1099px){ .grid{grid-template-columns:repeat(6,1fr)} }
+    @media (max-width:759px){ .grid{grid-template-columns:repeat(4,1fr)} }
+    .card-wrap{perspective:1000px}
+    .card{
+      width:100%;height:110px;border-radius:12px;position:relative;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.2,.9,.3,1);
+      cursor:pointer;box-shadow:0 6px 18px rgba(2,6,23,0.06);
+    }
+    .card.flip{transform:rotateY(180deg)}
+    .face{
+      position:absolute;inset:0;border-radius:12px;display:flex;align-items:center;justify-content:center;padding:8px;backface-visibility:hidden;
+    }
+    .front{background:linear-gradient(180deg,#ffffff,#f6fbff);border:1px solid rgba(2,6,23,0.04);}
+    .back{transform:rotateY(180deg);color:#022}
+    .front.base{border-top:8px solid var(--blue)}
+    .front.past{border-top:8px solid var(--orange)}
+    .content{font-weight:700;text-align:center;padding:6px;font-size:14px;color:#06335b}
+    .small{font-size:12px;color:var(--muted)}
+    .matched{box-shadow:0 10px 28px rgba(2,6,23,0.06);outline:4px solid rgba(0,0,0,0.02)}
+    .records{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+    .record-card{padding:8px 10px;border-radius:10px;background:linear-gradient(180deg,#fff,#fbfdff);border:1px solid rgba(2,6,23,0.04);font-size:13px}
+    footer{margin-top:14px;color:var(--muted);font-size:13px;text-align:center}
+    /* modal */
+    .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.45);z-index:120;visibility:hidden;opacity:0;transition:opacity .15s,visibility .15s}
+    .overlay.show{visibility:visible;opacity:1}
+    .modal{background:var(--panel);padding:18px;border-radius:12px;max-width:680px;width:94%;box-shadow:0 20px 50px rgba(2,6,23,0.18);text-align:center}
+    .countdown{font-size:58px;font-weight:900;color:var(--accent);margin-top:6px}
+    /* responsive card height adjust */
+    @media (max-width:420px){ .card{height:90px} .countdown{font-size:44px} }
+    /* visual hint */
+    .hint{font-size:13px;color:var(--muted);margin-top:6px}
+    .motiv{font-weight:700;color:#0b6f3c;margin-top:8px}
+    .confetti-canvas{position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:110}
+  </style>
+</head>
+<body>
+  <canvas id="confetti" class="confetti-canvas"></canvas>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Memoria de Verbos — Base ↔ Past Simple</h1>
+        <div class="hint">Empareja la forma base (azul) con su pasado + oración (naranja).</div>
+      </div>
+      <div class="controls">
+        <div class="panel stats">
+          <div>Movimientos: <strong id="moves">0</strong></div>
+          <div>Tiempo: <strong id="timer">00:00</strong></div>
+          <div>Emparejadas: <strong id="matched">0</strong>/<strong id="total">0</strong></div>
+        </div>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px">
+          <label class="small">Nivel</label>
+          <select id="level">
+            <option value="easy">Fácil (10)</option>
+            <option value="medium">Medio (20)</option>
+            <option value="hard" selected>Difícil (30)</option>
+          </select>
+          <button id="start" class="primary">Iniciar</button>
+          <button id="reset">Reiniciar</button>
+        </div>
+        <div class="small">Base <span style="color:var(--blue)">●</span> — Past+Oración <span style="color:var(--orange)">●</span></div>
+      </div>
+      <div class="records" id="records"></div>
+    </section>
+
+    <main id="board" class="grid panel" style="margin-top:12px"></main>
+
+    <footer>Sube este archivo como <code>index.html</code> al root de tu repo y activa GitHub Pages.</footer>
+  </div>
+
+  <div id="modal" class="overlay" role="dialog" aria-modal="true">
+    <div class="modal panel" id="modalContent"></div>
+  </div>
+
+<script>
+/* ======= Datos (30+) ======= */
+const ALL_VERBS = [
+["go","went","I went to the park yesterday."],
+["be","was/were","She was happy last night."],
+["have","had","They had lunch at noon."],
+["do","did","He did his homework."],
+["say","said","She said hello to everyone."],
+["get","got","I got a gift for my birthday."],
+["make","made","He made a cake."],
+["know","knew","We knew the answer."],
+["think","thought","They thought about the problem."],
+["take","took","He took the book from the shelf."],
+["see","saw","I saw a bird outside."],
+["come","came","She came to the party."],
+["want","wanted","They wanted to go."],
+["use","used","He used my phone."],
+["find","found","She found a coin."],
+["give","gave","He gave me a present."],
+["tell","told","She told a story."],
+["work","worked","They worked all day."],
+["call","called","I called my friend."],
+["try","tried","He tried to help."],
+["ask","asked","She asked a question."],
+["need","needed","They needed help."],
+["feel","felt","I felt tired."],
+["become","became","He became a teacher."],
+["leave","left","She left early."],
+["put","put","I put the keys on the table."],
+["mean","meant","What he said meant a lot."],
+["keep","kept","She kept the secret."],
+["let","let","I let him borrow my pen."],
+["begin","began","She began her presentation."],
+["seem","seemed","It seemed like a good idea."],
+["help","helped","They helped us."],
+["talk","talked","We talked about school."],
+["turn","turned","He turned off the lights."],
+["start","started","She started the engine."],
+["show","showed","He showed me a photo."],
+["hear","heard","I heard a noise."],
+["play","played","They played soccer."],
+["run","ran","He ran to school."],
+["move","moved","She moved to a new house."],
+["live","lived","We lived in Bogotá."],
+["believe","believed","They believed in him."],
+["bring","brought","He brought snacks."],
+["happen","happened","It happened yesterday."],
+["write","wrote","She wrote a letter."],
+["provide","provided","They provided support."],
+["sit","sat","I sat near the window."],
+["stand","stood","She stood in line."],
+["lose","lost","He lost his wallet."],
+["pay","paid","I paid for the ticket."],
+["meet","met","They met at the café."],
+["include","included","The list included everyone."],
+["continue","continued","She continued talking."],
+["set","set","He set the table."],
+["learn","learned","We learned a lot."],
+["change","changed","I changed my clothes."],
+["lead","led","He led the group."],
+["understand","understood","She understood the question."],
+["watch","watched","They watched a movie."],
+["follow","followed","We followed the path."],
+["stop","stopped","He stopped suddenly."],
+["create","created","She created a website."],
+["speak","spoke","He spoke clearly."],
+["read","read","I read a good book."],
+["allow","allowed","They allowed us to enter."],
+["add","added","She added sugar."],
+["spend","spent","I spent my money."],
+["grow","grew","The plant grew fast."],
+["open","opened","He opened the door."],
+["walk","walked","They walked home."],
+["win","won","She won the race."],
+["offer","offered","He offered help."],
+["remember","remembered","I remembered her name."],
+["love","loved","They loved the movie."],
+["consider","considered","She considered the idea."],
+["appear","appeared","He appeared suddenly."],
+["buy","bought","I bought new shoes."],
+["wait","waited","We waited for the bus."],
+["serve","served","They served lunch."],
+["die","died","He died last year."],
+["send","sent","I sent an email."],
+["expect","expected","She expected a reply."],
+["build","built","He built a house."],
+["stay","stayed","They stayed late."],
+["fall","fell","She fell down."],
+["cut","cut","He cut his finger."],
+["reach","reached","We reached the top."],
+["kill","killed","They killed the monster."],
+["remain","remained","He remained calm."],
+["suggest","suggested","I suggested a solution."],
+["raise","raised","She raised her hand."],
+["pass","passed","They passed the test."],
+["sell","sold","He sold his bike."],
+["require","required","It required attention."],
+["report","reported","They reported the news."],
+["decide","decided","She decided to go."],
+["pull","pulled","He pulled the rope."],
+["return","returned","I returned the book."]
+];
+
+/* ======= Config ======= */
+const LEVEL_SIZES = { easy:10, medium:20, hard:30 };
+const board = document.getElementById('board');
+const movesEl = document.getElementById('moves');
+const timerEl = document.getElementById('timer');
+const matchedEl = document.getElementById('matched');
+const totalEl = document.getElementById('total');
+const startBtn = document.getElementById('start');
+const resetBtn = document.getElementById('reset');
+const levelSel = document.getElementById('level');
+const recordsDiv = document.getElementById('records');
+const modal = document.getElementById('modal');
+const modalContent = document.getElementById('modalContent');
+const confettiCanvas = document.getElementById('confetti');
+let confettiCtx = confettiCanvas.getContext('2d');
+let confettiPieces=[]; let confettiTimer=null;
+
+/* ====== Audio (WebAudio digital tones) ====== */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioCtx();
+
+function tone(freq,dur=0.06,type='square'){ const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type=type; o.frequency.value=freq; g.gain.value=0; o.connect(g); g.connect(audioCtx.destination); g.gain.linearRampToValueAtTime(0.2,audioCtx.currentTime+0.01); o.start(); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur); o.stop(audioCtx.currentTime+dur+0.02); }
+
+function soundMatch(){ tone(880,0.06,'square'); setTimeout(()=>tone(1100,0.06,'square'),60); }
+function soundFail(){ tone(220,0.06,'sawtooth'); setTimeout(()=>tone(180,0.06,'sawtooth'),60); }
+function soundWin(){ tone(660,0.07,'triangle'); setTimeout(()=>tone(880,0.07,'triangle'),80); setTimeout(()=>tone(1100,0.07,'triangle'),160); }
+
+/* ====== Helpers ====== */
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]=a[j],a[i]]; } return a; }
+function formatTime(s){ const mm=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return mm+':'+ss; }
+function pick(n){ const c=[...ALL_VERBS]; shuffle(c); return c.slice(0,n); }
+
+/* ===== Records in localStorage ===== */
+function getRecords(){ try{ return JSON.parse(localStorage.getItem('verb_mem_records_v2')||'{}'); }catch(e){ return {}; } }
+function saveRecords(r){ localStorage.setItem('verb_mem_records_v2', JSON.stringify(r)); }
+function renderRecords(){ const r=getRecords(); recordsDiv.innerHTML=''; ['easy','medium','hard'].forEach(lv=>{ const rec=r[lv]||{time:null,moves:null}; const el=document.createElement('div'); el.className='record-card'; el.innerHTML=`<strong>${lv==='easy'?'Fácil':lv==='medium'?'Medio':'Difícil'}</strong><div style="margin-top:6px;font-size:13px">Tiempo: ${rec.time?formatTime(rec.time):'—'}<br>Mov.: ${rec.moves||'—'}</div>`; recordsDiv.appendChild(el); }); }
+
+/* ===== Game state ===== */
+let deck=[];
+let first=null, second=null, lock=false;
+let moves=0, matched=0, totalPairs=0;
+let timer=null, seconds=0;
+
+/* ===== Create deck and render ===== */
+function buildDeck(n){
+  const verbs = pick(n);
+  const arr = [];
+  verbs.forEach((v,i)=>{ arr.push({id:i,kind:'base',text:v[0]}); arr.push({id:i,kind:'past',text:v[1]+' — '+v[2]}); });
+  shuffle(arr);
+  return arr;
+}
+
+function renderBoard(){
+  board.innerHTML='';
+  deck.forEach((c,i)=>{
+    const wrap = document.createElement('div'); wrap.className='card-wrap';
+    const card = document.createElement('div'); card.className='card'; card.dataset.id=c.id; card.dataset.kind=c.kind; card.dataset.index=i;
+    const front = document.createElement('div'); front.className='face front '+(c.kind==='base'?'base':'past');
+    const back = document.createElement('div'); back.className='face back';
+    front.innerHTML = `<div class="content">${c.kind==='base'?c.text: c.text}</div>`;
+    back.innerHTML = `<div class="content">${c.kind==='base'?c.text: c.text}</div>`;
+    card.appendChild(front); card.appendChild(back);
+    card.addEventListener('click', onClickCard);
+    wrap.appendChild(card);
+    board.appendChild(wrap);
+  });
+}
+
+/* ===== Card interaction ===== */
+function onClickCard(e){
+  if(lock) return;
+  const card = this;
+  if(card.classList.contains('matched') || card.classList.contains('flip')) return;
+  if(moves===0 && !timer) startTimer();
+  card.classList.add('flip');
+  if(!first){ first = card; return; }
+  second = card;
+  lock=true;
+  moves++; document.getElementById('moves').textContent = moves;
+  if(first.dataset.id === second.dataset.id && first.dataset.kind !== second.dataset.kind){
+    setTimeout(()=>{
+      first.classList.add('matched'); second.classList.add('matched');
+      first.classList.remove('flip'); second.classList.remove('flip');
+      matched++; document.getElementById('matched').textContent = matched;
+      soundMatch();
+      resetTurn();
+      if(matched===totalPairs) win();
+    }, 350);
+  } else {
+    soundFail();
+    setTimeout(()=>{
+      first.classList.remove('flip'); second.classList.remove('flip');
+      resetTurn();
+    }, 900);
+  }
+}
+
+function resetTurn(){ [first,second]=[null,null]; lock=false; }
+
+/* ===== Timer ===== */
+function startTimer(){ seconds=0; timer = setInterval(()=>{ seconds++; timerEl.textContent = formatTime(seconds); },1000); }
+function stopTimer(){ if(timer) clearInterval(timer); timer=null; }
+
+/* ===== Win ===== */
+const motivational = ["¡Eres un maestro de los verbos!","¡Victoria épica!","¡Tu memoria es increíble!","¡Excelente trabajo!","¡Sigue así, genio!"];
+function win(){
+  stopTimer(); soundWin();
+  const rec=getRecords(); const lv=levelSel.value; rec[lv]=rec[lv]||{time:null,moves:null};
+  let isRecord=false;
+  if(rec[lv].time===null || seconds < rec[lv].time || (seconds===rec[lv].time && moves < rec[lv].moves)){
+    rec[lv].time=seconds; rec[lv].moves=moves; saveRecords(rec); isRecord=true;
+  }
+  renderRecords();
+  showModalWin(isRecord);
+  if(isRecord){ startConfetti(); }
+}
+
+function showModalWin(isRecord){
+  const msg = motivational[Math.floor(Math.random()*motivational.length)];
+  modalContent.innerHTML = `<div style="text-align:center"><h2>¡Felicidades! 🎉</h2><p>Tiempo: <strong>${formatTime(seconds)}</strong> — Movimientos: <strong>${moves}</strong></p>${isRecord?`<p class="motiv">¡Nuevo récord! 🏆</p>`:''}<p style="margin-top:8px;font-weight:600">${msg}</p><div style="margin-top:12px"><button id="again" class="primary">Jugar otra vez</button> <button id="close">Cerrar</button></div></div>`;
+  modal.classList.add('show');
+  modal.style.visibility='visible'; modal.style.opacity=1;
+  document.getElementById('again').addEventListener('click', ()=>{ modal.classList.remove('show'); modal.style.visibility='hidden'; modal.style.opacity=0; init(); });
+  document.getElementById('close').addEventListener('click', ()=>{ modal.classList.remove('show'); modal.style.visibility='hidden'; modal.style.opacity=0; });
+}
+
+/* ===== Countdown modal ===== */
+function startCountdown(cb){
+  modalContent.innerHTML = `<div><h2 class="big">Preparados...</h2><div class="countdown" id="count">3</div></div>`;
+  modal.classList.add('show');
+  modal.style.visibility='visible'; modal.style.opacity=1;
+  let n=3;
+  const t = setInterval(()=>{
+    n--; const el=document.getElementById('count'); if(el) el.textContent=n;
+    if(n<=0){ clearInterval(t); modal.classList.remove('show'); modal.style.visibility='hidden'; modal.style.opacity=0; cb(); }
+  },900);
+}
+
+/* ===== Confetti ===== */
+function resizeCanvas(){ confettiCanvas.width = window.innerWidth; confettiCanvas.height = window.innerHeight; }
+window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+function startConfetti(){
+  confettiPieces=[];
+  const cols=['#ff3b30','#ff9500','#ffcc00','#34c759','#0aa1ff','#5856d6','#ff2d55'];
+  for(let i=0;i<160;i++){ confettiPieces.push({x:Math.random()*confettiCanvas.width,y:Math.random()*-confettiCanvas.height,w:6+Math.random()*8,h:8+Math.random()*12,vx:-2+Math.random()*4,vy:2+Math.random()*6,r:Math.random()*360,color:cols[Math.floor(Math.random()*cols.length)],spin:Math.random()*0.2+0.05}); }
+  confettiLoop();
+  setTimeout(()=>{ confettiPieces=[]; },6000);
+}
+
+let confettiAnim=null;
+function confettiLoop(){
+  confettiCtx.clearRect(0,0,confettiCanvas.width,confettiCanvas.height);
+  confettiPieces.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.05; confettiCtx.save(); confettiCtx.translate(p.x,p.y); confettiCtx.rotate(p.r); confettiCtx.fillStyle=p.color; confettiCtx.fillRect(-p.w/2,-p.h/2,p.w,p.h); confettiCtx.restore(); });
+  confettiPieces = confettiPieces.filter(p=>p.y < confettiCanvas.height+50);
+  if(confettiPieces.length){ confettiAnim=requestAnimationFrame(confettiLoop); } else { if(confettiAnim) cancelAnimationFrame(confettiAnim); }
+}
+
+/* ===== Init game functions ===== */
+function init(){
+  stopTimer();
+  moves=0; matched=0; seconds=0;
+  movesEl.textContent='0'; timerEl.textContent='00:00'; matchedEl.textContent='0';
+  const lvl = levelSel.value;
+  const n = LEVEL_SIZES[lvl];
+  totalPairs = n;
+  totalEl.textContent = n;
+  deck = buildDeck(n);
+  renderBoard();
+  renderRecords();
+  // show countdown and then enable play
+  startCountdown(()=>{ /* countdown done */ });
+}
+
+startBtn.addEventListener('click', ()=>{ init(); });
+resetBtn.addEventListener('click', ()=>{ if(confirm('Reiniciar y mezclar?')) init(); });
+
+// initial render
+renderRecords();
+
+</script>
+</body>
+</html>
