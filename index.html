@@ -61,9 +61,7 @@
     .overlay.show{visibility:visible;opacity:1}
     .modal{background:var(--panel);padding:18px;border-radius:12px;max-width:680px;width:94%;box-shadow:0 20px 50px rgba(2,6,23,0.18);text-align:center}
     .countdown{font-size:58px;font-weight:900;color:var(--accent);margin-top:6px}
-    /* responsive card height adjust */
     @media (max-width:420px){ .card{height:90px} .countdown{font-size:44px} }
-    /* visual hint */
     .hint{font-size:13px;color:var(--muted);margin-top:6px}
     .motiv{font-weight:700;color:#0b6f3c;margin-top:8px}
     .confetti-canvas{position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:110}
@@ -91,9 +89,12 @@
         <div style="display:flex;align-items:center;gap:8px">
           <label class="small">Nivel</label>
           <select id="level">
+            <option value="beginner">Principiante (5)</option>
             <option value="easy">Fácil (10)</option>
             <option value="medium">Medio (20)</option>
             <option value="hard" selected>Difícil (30)</option>
+            <option value="expert">Experto (40)</option>
+            <option value="master">Maestro (50)</option>
           </select>
           <button id="start" class="primary">Iniciar</button>
           <button id="reset">Reiniciar</button>
@@ -113,7 +114,6 @@
   </div>
 
 <script>
-/* ======= Datos (30+) ======= */
 const ALL_VERBS = [
 ["go","went","I went to the park yesterday."],
 ["be","was/were","She was happy last night."],
@@ -215,8 +215,15 @@ const ALL_VERBS = [
 ["return","returned","I returned the book."]
 ];
 
-/* ======= Config ======= */
-const LEVEL_SIZES = { easy:10, medium:20, hard:30 };
+const LEVEL_SIZES = {
+  beginner: 5,
+  easy: 10,
+  medium: 20,
+  hard: 30,
+  expert: 40,
+  master: 50
+};
+
 const board = document.getElementById('board');
 const movesEl = document.getElementById('moves');
 const timerEl = document.getElementById('timer');
@@ -232,39 +239,48 @@ const confettiCanvas = document.getElementById('confetti');
 let confettiCtx = confettiCanvas.getContext('2d');
 let confettiPieces=[]; let confettiTimer=null;
 
-/* ====== Audio (WebAudio digital tones) ====== */
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioCtx();
 
 function tone(freq,dur=0.06,type='square'){ const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type=type; o.frequency.value=freq; g.gain.value=0; o.connect(g); g.connect(audioCtx.destination); g.gain.linearRampToValueAtTime(0.2,audioCtx.currentTime+0.01); o.start(); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur); o.stop(audioCtx.currentTime+dur+0.02); }
-
 function soundMatch(){ tone(880,0.06,'square'); setTimeout(()=>tone(1100,0.06,'square'),60); }
 function soundFail(){ tone(220,0.06,'sawtooth'); setTimeout(()=>tone(180,0.06,'sawtooth'),60); }
 function soundWin(){ tone(660,0.07,'triangle'); setTimeout(()=>tone(880,0.07,'triangle'),80); setTimeout(()=>tone(1100,0.07,'triangle'),160); }
 
-/* ====== Helpers ====== */
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]=a[j],a[i]]; } return a; }
 function formatTime(s){ const mm=String(Math.floor(s/60)).padStart(2,'0'); const ss=String(s%60).padStart(2,'0'); return mm+':'+ss; }
 function pick(n){ const c=[...ALL_VERBS]; shuffle(c); return c.slice(0,n); }
 
-/* ===== Records in localStorage ===== */
+function shuffleNoPairsNextToEachOther(deck) {
+  let valid = false, tries = 0;
+  while (!valid && tries < 100) {
+    shuffle(deck);
+    valid = true;
+    for (let i = 0; i < deck.length - 1; i++) {
+      if (deck[i].id === deck[i + 1].id) {
+        valid = false;
+        break;
+      }
+    }
+    tries++;
+  }
+  return deck;
+}
+
 function getRecords(){ try{ return JSON.parse(localStorage.getItem('verb_mem_records_v2')||'{}'); }catch(e){ return {}; } }
 function saveRecords(r){ localStorage.setItem('verb_mem_records_v2', JSON.stringify(r)); }
-function renderRecords(){ const r=getRecords(); recordsDiv.innerHTML=''; ['easy','medium','hard'].forEach(lv=>{ const rec=r[lv]||{time:null,moves:null}; const el=document.createElement('div'); el.className='record-card'; el.innerHTML=`<strong>${lv==='easy'?'Fácil':lv==='medium'?'Medio':'Difícil'}</strong><div style="margin-top:6px;font-size:13px">Tiempo: ${rec.time?formatTime(rec.time):'—'}<br>Mov.: ${rec.moves||'—'}</div>`; recordsDiv.appendChild(el); }); }
+function renderRecords(){ const r=getRecords(); recordsDiv.innerHTML=''; Object.keys(LEVEL_SIZES).forEach(lv=>{ const rec=r[lv]||{time:null,moves:null}; const nameMap={beginner:'Principiante',easy:'Fácil',medium:'Medio',hard:'Difícil',expert:'Experto',master:'Maestro'}; const el=document.createElement('div'); el.className='record-card'; el.innerHTML=`<strong>${nameMap[lv]||lv}</strong><div style="margin-top:6px;font-size:13px">Tiempo: ${rec.time?formatTime(rec.time):'—'}<br>Mov.: ${rec.moves||'—'}</div>`; recordsDiv.appendChild(el); }); }
 
-/* ===== Game state ===== */
 let deck=[];
 let first=null, second=null, lock=false;
 let moves=0, matched=0, totalPairs=0;
 let timer=null, seconds=0;
 
-/* ===== Create deck and render ===== */
 function buildDeck(n){
   const verbs = pick(n);
   const arr = [];
   verbs.forEach((v,i)=>{ arr.push({id:i,kind:'base',text:v[0]}); arr.push({id:i,kind:'past',text:v[1]+' — '+v[2]}); });
-  shuffle(arr);
-  return arr;
+  return shuffleNoPairsNextToEachOther(arr);
 }
 
 function renderBoard(){
@@ -283,7 +299,6 @@ function renderBoard(){
   });
 }
 
-/* ===== Card interaction ===== */
 function onClickCard(e){
   if(lock) return;
   const card = this;
@@ -314,11 +329,9 @@ function onClickCard(e){
 
 function resetTurn(){ [first,second]=[null,null]; lock=false; }
 
-/* ===== Timer ===== */
 function startTimer(){ seconds=0; timer = setInterval(()=>{ seconds++; timerEl.textContent = formatTime(seconds); },1000); }
 function stopTimer(){ if(timer) clearInterval(timer); timer=null; }
 
-/* ===== Win ===== */
 const motivational = ["¡Eres un maestro de los verbos!","¡Victoria épica!","¡Tu memoria es increíble!","¡Excelente trabajo!","¡Sigue así, genio!"];
 function win(){
   stopTimer(); soundWin();
@@ -341,7 +354,6 @@ function showModalWin(isRecord){
   document.getElementById('close').addEventListener('click', ()=>{ modal.classList.remove('show'); modal.style.visibility='hidden'; modal.style.opacity=0; });
 }
 
-/* ===== Countdown modal ===== */
 function startCountdown(cb){
   modalContent.innerHTML = `<div><h2 class="big">Preparados...</h2><div class="countdown" id="count">3</div></div>`;
   modal.classList.add('show');
@@ -353,7 +365,6 @@ function startCountdown(cb){
   },900);
 }
 
-/* ===== Confetti ===== */
 function resizeCanvas(){ confettiCanvas.width = window.innerWidth; confettiCanvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeCanvas); resizeCanvas();
 
@@ -373,7 +384,6 @@ function confettiLoop(){
   if(confettiPieces.length){ confettiAnim=requestAnimationFrame(confettiLoop); } else { if(confettiAnim) cancelAnimationFrame(confettiAnim); }
 }
 
-/* ===== Init game functions ===== */
 function init(){
   stopTimer();
   moves=0; matched=0; seconds=0;
@@ -385,16 +395,13 @@ function init(){
   deck = buildDeck(n);
   renderBoard();
   renderRecords();
-  // show countdown and then enable play
-  startCountdown(()=>{ /* countdown done */ });
+  startCountdown(()=>{});
 }
 
 startBtn.addEventListener('click', ()=>{ init(); });
 resetBtn.addEventListener('click', ()=>{ if(confirm('Reiniciar y mezclar?')) init(); });
 
-// initial render
 renderRecords();
-
 </script>
 </body>
 </html>
